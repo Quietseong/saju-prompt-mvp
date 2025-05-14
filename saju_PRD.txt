@@ -1,0 +1,113 @@
+# Product Requirements Document (PRD)
+
+## Product Name
+
+"SajuMate" – AI-Based Fortune Chatbot (English Version)
+
+## Overview
+
+SajuMate is a mobile-based, English-language chatbot application designed for Western audiences curious about Eastern fortune-telling (Saju, or Four Pillars of Destiny). The app delivers personalized fortune analysis through a GPT-powered conversational interface.
+
+## Objective
+
+To offer engaging and accessible Saju personality and annual fortune readings to non-Korean users via a chat-based mobile application.
+
+## Target Users
+
+* Western individuals with an interest in Eastern philosophy or self-discovery tools
+* Mobile-first users seeking instant, personalized insights
+
+## Platform
+
+* iOS & Android mobile application
+
+## Key Features
+
+1. **Conversational UI**
+
+   * GPT API-based chatbot
+   * Interactive Q\&A style onboarding and results delivery
+
+2. **User Input Form**
+
+   * Date of birth (YYYY-MM-DD)
+   * Time of birth (HH\:MM, with AM/PM or 24-hour format)
+   * Place of birth (used for timezone calculations)
+   * Gender
+
+3. **Output Screens**
+
+   * **Step 1:** Summary Cards with scores for major life areas:
+
+     * Personality (self-awareness)
+     * Love
+     * Career
+     * Health
+   * **Step 2:** Detailed text-based interpretation for:
+
+     * Personality traits
+     * Fortune for the current year (e.g., 2025)
+
+4. **Technology Stack**
+
+   * GPT-4 or GPT-4 Turbo via OpenAI API
+   * React Native for cross-platform mobile development
+   * Timezone conversion libraries (e.g., Luxon, Moment.js with tz)
+
+5. **Localization & Language**
+
+   * English only (initial release)
+   * Future plan for multilingual support depending on demand
+
+6. **Privacy & Data Handling**
+
+   * No storage of sensitive personal data without explicit consent
+   * Local-only input processing where feasible
+
+## Functional Requirements
+
+* Input validation for date, time, and location
+* API call to GPT for dynamic interpretation
+* Modular design for switching between chatbot dialogue and UI card view
+* Simple feedback mechanism (thumbs up/down) after reading
+
+## Non-Functional Requirements
+
+* < 2 seconds response time per interaction
+* Support 99.5% uptime SLA
+* GDPR-compliant user interaction and data logging (if retained)
+
+## Future Enhancements
+
+* Compatibility analysis between users (Saju matching)
+* Monthly or daily fortune readings
+* Name analysis module
+* Subscription model for premium content
+
+## MVP Scope
+
+* Input form and validation
+* Scorecard summary UI
+* Text-based fortune result view
+* GPT integration for live analysis
+* Feedback interaction
+
+## Success Metrics
+
+* Daily Active Users (DAU)
+* Engagement time per session
+* Feedback quality (thumbs or survey response)
+* Conversion rate to extended readings (if monetized later)
+
+## Timeline
+
+* Wireframe/UI Design: 2 weeks
+* GPT Prompt Engineering & Integration: 2 weeks
+* MVP Build: 4 weeks
+* Testing & Launch: 2 weeks
+* Total: 10 weeks to initial release
+
+---
+
+Prepared by: PRD Writer GPT
+Date: 2025-05-13
