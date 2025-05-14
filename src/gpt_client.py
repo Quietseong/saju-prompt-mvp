@@ -77,6 +77,46 @@ class GPTClient(BaseLLMClient):
                     logger.error(f"OpenAI API {self.max_retries}회 실패: {str(e)}")
                     raise
 
+    def generate_chat_completion(self, messages: list[dict[str, str]], temperature: float = 0.7, max_tokens: int = 2000) -> Dict[str, Any]:
+        """
+        OpenAI GPT API를 사용해 대화 히스토리(messages) 기반으로 응답을 생성한다.
+
+        Args:
+            messages (list[dict[str, str]]): 대화 히스토리 (role: user/assistant/system, content)
+            temperature (float): 창의성 조절 파라미터
+            max_tokens (int): 최대 토큰 수
+        Returns:
+            Dict[str, Any]: 응답 텍스트, 모델명, 토큰 사용량 등
+        """
+        attempts = 0
+        while attempts < self.max_retries:
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                return {
+                    "text": response.choices[0].message.content,
+                    "model": self.model,
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    },
+                    "finish_reason": response.choices[0].finish_reason,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                attempts += 1
+                logger.warning(f"OpenAI API 오류: {str(e)} (시도 {attempts}/{self.max_retries})")
+                if attempts < self.max_retries:
+                    time.sleep(self.retry_delay * attempts)
+                else:
+                    logger.error(f"OpenAI API {self.max_retries}회 실패: {str(e)}")
+                    raise
+
 class SLLMClient(BaseLLMClient):
     """Ollama 등 self-hosted LLM용 클라이언트"""
     def __init__(self, model: str = None, base_url: str = None):
@@ -159,6 +199,44 @@ class Llama3Client(BaseLLMClient):
         chat_prompt = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{prompt}<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n"
         result = self.pipe(
             chat_prompt,
+            do_sample=True,
+            temperature=temperature,
+            max_new_tokens=max_tokens,
+            return_full_text=False
+        )
+        return {
+            "text": result[0]["generated_text"],
+            "model": self.model_name,
+            "usage": {},
+        }
+
+    def chat_with_history(
+        self,
+        history: list[dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 1024
+    ) -> Dict[str, Any]:
+        """
+        대화 히스토리(역할별 메시지 리스트)를 받아 챗봇처럼 응답을 생성한다.
+
+        Args:
+            history (list[dict[str, str]]): 대화 히스토리 (role: user/assistant, content)
+            temperature (float): 창의성 조절 파라미터
+            max_tokens (int): 최대 토큰 수
+        Returns:
+            Dict[str, Any]: 응답 텍스트, 모델명 등
+        """
+        # Llama-3 chat 포맷으로 프롬프트 누적 생성
+        prompt = "<|begin_of_text|>"
+        for turn in history:
+            if turn["role"] == "user":
+                prompt += "<|start_header_id|>user<|end_header_id|>\n" + turn["content"] + "<|eot_id|>\n"
+            elif turn["role"] == "assistant":
+                prompt += "<|start_header_id|>assistant<|end_header_id|>\n" + turn["content"] + "<|eot_id|>\n"
+        prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
+        # 한글 주석: 대화 히스토리를 누적하여 Llama-3 chat 포맷으로 변환
+        result = self.pipe(
+            prompt,
             do_sample=True,
             temperature=temperature,
             max_new_tokens=max_tokens,
