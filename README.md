@@ -1,3 +1,12 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Quietseong/saju-prompt-mvp)
+
+# Overall System
+![image](https://github.com/user-attachments/assets/fd1af049-a307-4e30-9ea9-6e6631281417)
+
+# Demo(Gradio)
+https://github.com/user-attachments/assets/9bc369cc-c4b3-4e48-9fba-de88c830cd5e
+
+--------
 # Product Requirements Document (PRD)
 
 ## Product Name
@@ -82,8 +91,3 @@ SajuMate Prompt MVP는 Saju(사주) 운세 해석을 위한 프롬프트 엔지�
 - 결과 분석/프롬프트 개선: 2일
 - 문서화 및 확장성 검토: 1일
 - 총 1주일 내 MVP 완성
-
----
-
-Prepared by: Prompt Engineering Team
-Date: 2025-05-13 
