@@ -4,8 +4,8 @@ import logging
 from typing import Dict, Any, Optional
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from transformers import AutoModelForSeq2SeqLM, PreTrainedTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, BitsAndBytesConfig
+import torch
 
 load_dotenv()
 
@@ -108,18 +108,41 @@ class SLLMClient(BaseLLMClient):
             raise
 
 class Llama3Client(BaseLLMClient):
-    """Meta-Llama-3-8B-Instruct (PyTorch) 모델용 클라이언트"""
-    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct", device: str = "auto"):
+    """Meta-Llama-3-8B-Instruct (PyTorch, 4bit QLoRA) 모델용 클라이언트"""
+    def __init__(
+        self,
+        model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
+        device: str = "auto",
+        load_in_4bit: bool = True,
+        torch_dtype: torch.dtype = torch.float16,
+        quantization_config: Optional[BitsAndBytesConfig] = None
+    ):
         """
-        Meta-Llama-3-8B-Instruct PyTorch 모델을 로드한다.
+        Meta-Llama-3-8B-Instruct PyTorch 모델을 4bit QLoRA(양자화)로 로드한다.
 
         Args:
             model_name (str): HuggingFace 모델명
             device (str): 'auto', 'cpu', 또는 'cuda' (기본값: 'auto')
+            load_in_4bit (bool): 4bit 양자화 적용 여부
+            torch_dtype (torch.dtype): 텐서 데이터 타입 (기본값: float16)
+            quantization_config (BitsAndBytesConfig, optional): 커스텀 양자화 설정
         """
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, use_flash_attention_2=False)
+        if quantization_config is None and load_in_4bit:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch_dtype
+            )
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map=device,
+            use_flash_attention_2=False,
+            torch_dtype=torch_dtype,
+            quantization_config=quantization_config if load_in_4bit else None
+        )
         self.pipe = pipeline(
             "text-generation",
             model=self.model,
@@ -130,7 +153,7 @@ class Llama3Client(BaseLLMClient):
 
     def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> Dict[str, Any]:
         """
-        Meta-Llama-3-8B-Instruct 모델을 사용해 프롬프트에 대한 응답을 생성한다.
+        Meta-Llama-3-8B-Instruct (4bit QLoRA) 모델을 사용해 프롬프트에 대한 응답을 생성한다.
         """
         # Llama-3의 chat 포맷에 맞게 프롬프트 구성
         chat_prompt = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{prompt}<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n"
