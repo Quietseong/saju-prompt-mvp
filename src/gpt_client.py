@@ -107,12 +107,19 @@ class SLLMClient(BaseLLMClient):
             logger.error(f"SLLM(Ollama) 오류: {str(e)}")
             raise
 
-class Phi3Client(BaseLLMClient):
-    """HuggingFace Phi-3-small-8k-instruct 모델용 클라이언트"""
-    def __init__(self, model_name: str = "microsoft/phi-3-small-8k-instruct", device: str = "auto"):
+class Llama3Client(BaseLLMClient):
+    """Meta-Llama-3-8B-Instruct (PyTorch) 모델용 클라이언트"""
+    def __init__(self, model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct", device: str = "auto"):
+        """
+        Meta-Llama-3-8B-Instruct PyTorch 모델을 로드한다.
+
+        Args:
+            model_name (str): HuggingFace 모델명
+            device (str): 'auto', 'cpu', 또는 'cuda' (기본값: 'auto')
+        """
         self.model_name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, use_flash_attention_2=False)
         self.pipe = pipeline(
             "text-generation",
             model=self.model,
@@ -123,49 +130,10 @@ class Phi3Client(BaseLLMClient):
 
     def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> Dict[str, Any]:
         """
-        Phi-3 모델을 사용해 프롬프트에 대한 응답을 생성한다.
+        Meta-Llama-3-8B-Instruct 모델을 사용해 프롬프트에 대한 응답을 생성한다.
         """
-        # Phi-3의 chat 포맷에 맞게 프롬프트 구성
-        chat_prompt = f"<|endoftext|><|user|>\n{prompt}<|end|>\n<|assistant|>\n"
-        result = self.pipe(
-            chat_prompt,
-            do_sample=True,
-            temperature=temperature,
-            max_new_tokens=max_tokens,
-            return_full_text=False
-        )
-        return {
-            "text": result[0]["generated_text"],
-            "model": self.model_name,
-            "usage": {},  # 토큰 사용량 등은 transformers pipeline에서 직접 제공하지 않음
-        }
-
-class Phi3OnnxClient(BaseLLMClient):
-    """HuggingFace Phi-3-small-8k-instruct ONNX 모델용 클라이언트 (Windows/CPU 지원)"""
-    def __init__(self, model_name: str = "microsoft/phi-3-small-8k-instruct-onnx-cuda", device: str = "cpu"):
-        """
-        ONNX 기반 Phi-3 모델을 로드한다.
-
-        Args:
-            model_name (str): ONNX 모델 경로 또는 HuggingFace 모델명
-            device (str): 'cpu' 또는 'cuda' (기본값: 'cpu')
-        """
-        self.model_name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        # ONNX 모델은 pipeline에서 자동으로 ONNX Runtime을 사용
-        self.pipe = pipeline(
-            "text-generation",
-            model=model_name,
-            tokenizer=self.tokenizer,
-            device_map=device,
-            max_new_tokens=1024
-        )
-
-    def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> Dict[str, Any]:
-        """
-        ONNX 기반 Phi-3 모델을 사용해 프롬프트에 대한 응답을 생성한다.
-        """
-        chat_prompt = f"<|endoftext|><|user|>\n{prompt}<|end|>\n<|assistant|>\n"
+        # Llama-3의 chat 포맷에 맞게 프롬프트 구성
+        chat_prompt = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n{prompt}<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n"
         result = self.pipe(
             chat_prompt,
             do_sample=True,
@@ -184,18 +152,17 @@ def get_llm_client(llm_type: Optional[str] = None) -> BaseLLMClient:
     환경변수 또는 인자로 LLM 종류를 받아 적절한 클라이언트 인스턴스를 반환한다.
 
     Args:
-        llm_type (Optional[str]): 'openai', 'sllm', 'phi3', 'phi3-onnx' (기본값: 환경변수 LLM_TYPE)
+        llm_type (Optional[str]): 'openai', 'sllm', 'llama3' (기본값: 환경변수 LLM_TYPE)
     Returns:
         BaseLLMClient: LLM 클라이언트 인스턴스
     """
     llm_type = llm_type or os.getenv("LLM_TYPE", "openai").lower()
+    print("DEBUG llm_type:", llm_type)
     if llm_type == "openai":
         return GPTClient()
     elif llm_type == "sllm":
         return SLLMClient()
-    elif llm_type == "phi3":
-        return Phi3Client()
-    elif llm_type == "phi3-onnx":
-        return Phi3OnnxClient()
+    elif llm_type == "llama3":
+        return Llama3Client()
     else:
         raise ValueError(f"지원하지 않는 LLM_TYPE: {llm_type}")
