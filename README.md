@@ -3,14 +3,16 @@
 # Overall System
 ![image](https://github.com/user-attachments/assets/fd1af049-a307-4e30-9ea9-6e6631281417)
 
+# Demo(Gradio)
+https://github.com/user-attachments/assets/9bc369cc-c4b3-4e48-9fba-de88c830cd5e
+
+-----------
+
 # 간단 사용방법
 1. notebook>saju_pe_test.ipynb 실행
 2. 필수 패키지 재설치 (!pip install ...)
 3. 허깅페이스 토큰 입력(Meta-Llama-3-8B-Instruct -> huggingface gated model token)
 4. 계속 실행 후 그라디오 데모 사용
-
-# Demo(Gradio)
-https://github.com/user-attachments/assets/9bc369cc-c4b3-4e48-9fba-de88c830cd5e
 
 --------
 # Product Requirements Document (PRD)
