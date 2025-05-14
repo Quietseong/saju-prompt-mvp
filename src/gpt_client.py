@@ -1,0 +1,201 @@
+import os
+import time
+import logging
+from typing import Dict, Any, Optional
+from abc import ABC, abstractmethod
+from dotenv import load_dotenv
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from transformers import AutoModelForSeq2SeqLM, PreTrainedTokenizer
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class BaseLLMClient(ABC):
+    """LLM 클라이언트 추상 클래스. 모든 LLM 클라이언트는 이 인터페이스를 따라야 함."""
+
+    @abstractmethod
+    def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> Dict[str, Any]:
+        """
+        LLM에 프롬프트를 입력해 응답을 생성한다.
+
+        Args:
+            prompt (str): 입력 프롬프트
+            temperature (float): 창의성 조절 파라미터
+            max_tokens (int): 최대 토큰 수
+        Returns:
+            Dict[str, Any]: 응답 텍스트, 모델명, 토큰 사용량 등
+        """
+        pass
+
+class GPTClient(BaseLLMClient):
+    """OpenAI GPT API용 클라이언트"""
+    def __init__(self, model: str = None, max_retries: int = 3, retry_delay: int = 2):
+        import openai
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY 환경변수가 설정되어 있지 않습니다.")
+        self.client = openai.OpenAI(api_key=self.api_key)
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4-turbo")
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+
+    def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> Dict[str, Any]:
+        """
+        OpenAI GPT API를 사용해 프롬프트에 대한 응답을 생성한다.
+        """
+        attempts = 0
+        while attempts < self.max_retries:
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are a Saju fortune telling expert."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                return {
+                    "text": response.choices[0].message.content,
+                    "model": self.model,
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    },
+                    "finish_reason": response.choices[0].finish_reason,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                attempts += 1
+                logger.warning(f"OpenAI API 오류: {str(e)} (시도 {attempts}/{self.max_retries})")
+                if attempts < self.max_retries:
+                    time.sleep(self.retry_delay * attempts)
+                else:
+                    logger.error(f"OpenAI API {self.max_retries}회 실패: {str(e)}")
+                    raise
+
+class SLLMClient(BaseLLMClient):
+    """Ollama 등 self-hosted LLM용 클라이언트"""
+    def __init__(self, model: str = None, base_url: str = None):
+        import ollama
+        self.model = model or os.getenv("SLLM_MODEL", "llama3")
+        self.base_url = base_url or os.getenv("SLLM_BASE_URL", "http://localhost:11434")
+        self.ollama = ollama
+        # ollama 패키지는 환경변수로 base_url을 읽음
+
+    def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> Dict[str, Any]:
+        """
+        Ollama API를 사용해 프롬프트에 대한 응답을 생성한다.
+        """
+        try:
+            response = self.ollama.chat(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                stream=False
+            )
+            return {
+                "text": response['message']['content'],
+                "model": self.model,
+                "usage": {},  # Ollama는 토큰 사용량 미제공
+                "finish_reason": response.get('done', 'stop'),
+                "timestamp": time.time()
+            }
+        except Exception as e:
+            logger.error(f"SLLM(Ollama) 오류: {str(e)}")
+            raise
+
+class Phi3Client(BaseLLMClient):
+    """HuggingFace Phi-3-small-8k-instruct 모델용 클라이언트"""
+    def __init__(self, model_name: str = "microsoft/phi-3-small-8k-instruct", device: str = "auto"):
+        self.model_name = model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
+        self.pipe = pipeline(
+            "text-generation",
+            model=self.model,
+            tokenizer=self.tokenizer,
+            device_map=device,
+            max_new_tokens=1024
+        )
+
+    def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> Dict[str, Any]:
+        """
+        Phi-3 모델을 사용해 프롬프트에 대한 응답을 생성한다.
+        """
+        # Phi-3의 chat 포맷에 맞게 프롬프트 구성
+        chat_prompt = f"<|endoftext|><|user|>\n{prompt}<|end|>\n<|assistant|>\n"
+        result = self.pipe(
+            chat_prompt,
+            do_sample=True,
+            temperature=temperature,
+            max_new_tokens=max_tokens,
+            return_full_text=False
+        )
+        return {
+            "text": result[0]["generated_text"],
+            "model": self.model_name,
+            "usage": {},  # 토큰 사용량 등은 transformers pipeline에서 직접 제공하지 않음
+        }
+
+class Phi3OnnxClient(BaseLLMClient):
+    """HuggingFace Phi-3-small-8k-instruct ONNX 모델용 클라이언트 (Windows/CPU 지원)"""
+    def __init__(self, model_name: str = "microsoft/phi-3-small-8k-instruct-onnx-cuda", device: str = "cpu"):
+        """
+        ONNX 기반 Phi-3 모델을 로드한다.
+
+        Args:
+            model_name (str): ONNX 모델 경로 또는 HuggingFace 모델명
+            device (str): 'cpu' 또는 'cuda' (기본값: 'cpu')
+        """
+        self.model_name = model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        # ONNX 모델은 pipeline에서 자동으로 ONNX Runtime을 사용
+        self.pipe = pipeline(
+            "text-generation",
+            model=model_name,
+            tokenizer=self.tokenizer,
+            device_map=device,
+            max_new_tokens=1024
+        )
+
+    def generate_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1024) -> Dict[str, Any]:
+        """
+        ONNX 기반 Phi-3 모델을 사용해 프롬프트에 대한 응답을 생성한다.
+        """
+        chat_prompt = f"<|endoftext|><|user|>\n{prompt}<|end|>\n<|assistant|>\n"
+        result = self.pipe(
+            chat_prompt,
+            do_sample=True,
+            temperature=temperature,
+            max_new_tokens=max_tokens,
+            return_full_text=False
+        )
+        return {
+            "text": result[0]["generated_text"],
+            "model": self.model_name,
+            "usage": {},
+        }
+
+def get_llm_client(llm_type: Optional[str] = None) -> BaseLLMClient:
+    """
+    환경변수 또는 인자로 LLM 종류를 받아 적절한 클라이언트 인스턴스를 반환한다.
+
+    Args:
+        llm_type (Optional[str]): 'openai', 'sllm', 'phi3', 'phi3-onnx' (기본값: 환경변수 LLM_TYPE)
+    Returns:
+        BaseLLMClient: LLM 클라이언트 인스턴스
+    """
+    llm_type = llm_type or os.getenv("LLM_TYPE", "openai").lower()
+    if llm_type == "openai":
+        return GPTClient()
+    elif llm_type == "sllm":
+        return SLLMClient()
+    elif llm_type == "phi3":
+        return Phi3Client()
+    elif llm_type == "phi3-onnx":
+        return Phi3OnnxClient()
+    else:
+        raise ValueError(f"지원하지 않는 LLM_TYPE: {llm_type}")

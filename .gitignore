@@ -31,4 +31,6 @@ tasks/
 venv/
 __pycache__/
 *.pyc
-data/ 
+data/
+results/
+*.ipynb_checkpoints 
