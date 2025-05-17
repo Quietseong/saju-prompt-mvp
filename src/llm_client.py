@@ -54,6 +54,11 @@ class LLMProvider(ABC):
     def get_token_limit(self) -> int:
         """모델의 최대 토큰 수 반환"""
         pass
+        
+    @abstractmethod
+    def chat_with_history(self, history: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
+        """채팅 이력을 사용한 대화 생성"""
+        pass
 
 class OpenAIProvider(LLMProvider):
     """OpenAI API 프로바이더"""
@@ -98,6 +103,35 @@ class OpenAIProvider(LLMProvider):
             return result
         except Exception as e:
             logger.error(f"OpenAI API 오류: {e}")
+            raise
+    
+    def chat_with_history(self, history: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
+        """채팅 이력을 사용한 대화 생성"""
+        start_time = time.time()
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=history,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+            
+            result = {
+                "text": response.choices[0].message.content.strip(),
+                "model": self.model,
+                "latency": time.time() - start_time,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            }
+            
+            return result
+        except Exception as e:
+            logger.error(f"OpenAI API 채팅 오류: {e}")
             raise
     
     async def agenerate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
@@ -334,6 +368,104 @@ class LlamaProvider(LLMProvider):
         # 기본값
         return 4096
 
+    def chat_with_history(self, history: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
+        """채팅 이력을 사용한 대화 생성"""
+        start_time = time.time()
+        
+        try:
+            # API 모드일 경우
+            if self.use_api:
+                # 채팅 히스토리를 API 형식으로 변환
+                payload = {
+                    "messages": history,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    **kwargs
+                }
+                
+                url = f"{self.host.rstrip('/')}/chat"
+                
+                response = requests.post(url, json=payload)
+                response.raise_for_status()
+                
+                result = response.json()
+                result["latency"] = time.time() - start_time
+                result["model"] = self.model
+                
+                # 표준화된 응답 형식으로 변환
+                if "text" not in result and "content" in result:
+                    result["text"] = result.pop("content")
+                
+                # 토큰 사용량 추가 (있는 경우)
+                if "usage" not in result:
+                    result["usage"] = {}
+                
+                return result
+            
+            # 로컬 모델 모드일 경우
+            else:
+                if not self.local_model or not self.local_tokenizer:
+                    self._load_local_model()
+                
+                # 채팅 히스토리를 문자열로 변환
+                formatted_chat = ""
+                for msg in history:
+                    role = msg["role"].upper()
+                    formatted_chat += f"{role}: {msg['content']}\n\n"
+                
+                # Assistant 응답을 위한 프롬프트 추가
+                formatted_chat += "ASSISTANT: "
+                
+                # 토큰화 및 토큰 수 계산
+                input_tokens = self.local_tokenizer.encode(formatted_chat, return_tensors="pt").to(self.device)
+                input_token_count = input_tokens.shape[1]
+                
+                # 생성 설정
+                generation_config = {
+                    "temperature": temperature,
+                    "max_new_tokens": max_tokens,
+                    "top_p": kwargs.get("top_p", 0.9),
+                    "do_sample": temperature > 0.0,
+                    **{k: v for k, v in kwargs.items() if k not in ["top_p"]}
+                }
+                
+                # 추론 실행
+                with torch.no_grad():
+                    output = self.local_model.generate(
+                        input_tokens,
+                        **generation_config
+                    )
+                
+                # 결과 디코딩 및 프롬프트 제거
+                full_output = self.local_tokenizer.decode(output[0], skip_special_tokens=True)
+                result_text = full_output[len(formatted_chat):].strip()
+                
+                # 출력 토큰 추정
+                output_token_count = len(self.local_tokenizer.encode(result_text))
+                
+                result = {
+                    "text": result_text,
+                    "model": self.model,
+                    "latency": time.time() - start_time,
+                    "usage": {
+                        "prompt_tokens": input_token_count,
+                        "completion_tokens": output_token_count,
+                        "total_tokens": input_token_count + output_token_count
+                    }
+                }
+                
+                return result
+                
+        except Exception as e:
+            logger.error(f"채팅 이력을 사용한 대화 생성 오류: {e}")
+            
+            # 오류 결과 반환
+            return {
+                "text": f"채팅 이력을 사용한 대화 생성 중 오류가 발생했습니다: {str(e)}",
+                "model": self.model,
+                "error": str(e)
+            }
+
 class HuggingFaceProvider(LLMProvider):
     """허깅페이스 API 프로바이더"""
     def __init__(self, model: str = "meta-llama/Llama-3-8b-instruct", api_key: Optional[str] = None):
@@ -366,6 +498,71 @@ class HuggingFaceProvider(LLMProvider):
             }
         else:
             return {"inputs": prompt}
+    
+    def _format_history_for_chat(self, history: List[Dict[str, str]]) -> Dict[str, Any]:
+        """채팅 이력을 API 형식으로 포맷팅"""
+        if self.is_chat_model:
+            # 메시지 배열에 채팅 이력 포맷팅
+            return {
+                "inputs": {
+                    "messages": history
+                }
+            }
+        else:
+            # 비채팅 모델을 위한 이력 평면화
+            flat_history = "\n\n".join([f"{msg['role'].upper()}: {msg['content']}" for msg in history])
+            return {"inputs": flat_history}
+            
+    def chat_with_history(self, history: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
+        """채팅 이력을 사용한 대화 생성"""
+        start_time = time.time()
+        
+        payload = self._format_history_for_chat(history)
+        
+        # 매개변수 추가
+        payload["parameters"] = {
+            "temperature": temperature,
+            "max_new_tokens": max_tokens,
+            "return_full_text": False,
+            **kwargs
+        }
+        
+        try:
+            response = requests.post(self.api_url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            
+            # 응답 파싱 (채팅 모델과 일반 모델 응답 형식이 다름)
+            result_text = ""
+            if isinstance(data, list) and len(data) > 0:
+                if self.is_chat_model and "generated_text" in data[0]:
+                    result_text = data[0]["generated_text"]
+                elif "message" in data[0] and "content" in data[0]["message"]:
+                    result_text = data[0]["message"]["content"]
+                elif "generated_text" in data[0]:
+                    result_text = data[0]["generated_text"]
+                else:
+                    result_text = str(data[0])
+            
+            # 토큰 수 추정
+            prompt_tokens = sum(len(msg["content"].split()) * 1.3 for msg in history)
+            completion_tokens = len(result_text.split()) * 1.3
+            
+            result = {
+                "text": result_text.strip(),
+                "model": self.model,
+                "latency": time.time() - start_time,
+                "usage": {
+                    "prompt_tokens": int(prompt_tokens),
+                    "completion_tokens": int(completion_tokens),
+                    "total_tokens": int(prompt_tokens + completion_tokens)
+                }
+            }
+            
+            return result
+        except requests.RequestException as e:
+            logger.error(f"HuggingFace API 오류: {e}")
+            raise
     
     def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
         """텍스트 생성 메서드"""
@@ -554,6 +751,20 @@ class LLMClient:
         """현재 모델의 최대 토큰 수 반환"""
         return self.provider.get_token_limit()
 
+    def chat_with_history(self, history: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1000, **kwargs) -> Dict[str, Any]:
+        """채팅 이력을 사용한 대화 생성"""
+        try:
+            return self.provider.chat_with_history(history, temperature, max_tokens, **kwargs)
+        except Exception as e:
+            logger.error(f"채팅 이력을 사용한 대화 생성 오류: {e}")
+            
+            # 오류 결과 반환
+            return {
+                "text": f"채팅 이력을 사용한 대화 생성 중 오류가 발생했습니다: {str(e)}",
+                "model": self.model,
+                "error": str(e)
+            }
+
 # 유틸리티 함수
 def save_response(response: Dict[str, Any], output_dir: str = "results/responses") -> str:
     """
@@ -605,3 +816,63 @@ if __name__ == "__main__":
         logger.error(f"테스트 실패: {str(e)}")
         
     # 비동기 사용 예시는 생략 (실제 사용 시 구현 필요) 
+
+# 간편한 LLM 클라이언트 생성 함수
+def get_llm_client(
+    provider_name: str = "huggingface",
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    model_path: Optional[str] = None,
+    host: Optional[str] = None,
+    load_in_4bit: bool = False,
+    device: str = "auto"
+) -> LLMClient:
+    """
+    간편하게 LLM 클라이언트를 생성하는 함수
+    
+    Args:
+        provider_name: 프로바이더 이름 ("openai", "huggingface", "llama" 중 하나)
+        model_name: 모델 이름 (None이면 각 프로바이더의 기본값 사용)
+        api_key: API 키 (None이면 환경변수에서 읽기)
+        model_path: 로컬 모델 경로 (Llama 로컬 전용)
+        host: API 호스트 주소 (Llama API 전용)
+        load_in_4bit: 4비트 양자화 사용 여부 (Llama 로컬 전용)
+        device: 사용할 디바이스 (Llama 로컬 전용)
+    
+    Returns:
+        LLMClient 인스턴스
+    """
+    # 프로바이더 타입 결정
+    provider_map = {
+        "openai": ModelType.OPENAI,
+        "gpt": ModelType.OPENAI,
+        "huggingface": ModelType.HUGGINGFACE,
+        "hf": ModelType.HUGGINGFACE,
+        "llama": ModelType.LLAMA,
+        "llama3": ModelType.LLAMA
+    }
+    
+    provider_type = provider_map.get(provider_name.lower())
+    if not provider_type:
+        raise ValueError(f"지원되지 않는 프로바이더: {provider_name}. 'openai', 'huggingface', 'llama' 중 하나여야 합니다.")
+    
+    # 기본 모델 이름 설정
+    default_models = {
+        ModelType.OPENAI: "gpt-4-turbo",
+        ModelType.HUGGINGFACE: "meta-llama/Llama-3-8b-instruct",
+        ModelType.LLAMA: "llama-3-8b-instruct"
+    }
+    
+    if not model_name:
+        model_name = default_models[provider_type]
+    
+    # LLM 클라이언트 생성
+    return LLMClient(
+        provider_type=provider_type,
+        model=model_name,
+        api_key=api_key,
+        model_path=model_path,
+        host=host,
+        load_in_4bit=load_in_4bit,
+        device=device
+    ) 

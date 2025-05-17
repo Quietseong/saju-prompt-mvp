@@ -39,6 +39,28 @@ pip install -e .
 
 ### 방법 3: Google Colab에서 실행
 
+#### 방법 A: 간편한 Colab 노트북 사용 (권장)
+
+제공된 `notebooks/colab_run.ipynb` 노트북을 다운로드하여 Google Colab에서 열고 각 셀을 순서대로 실행하세요:
+
+1. GitHub에서 [colab_run.ipynb](https://github.com/Quietseong/saju-prompt-mvp/blob/main/notebooks/colab_run.ipynb) 파일을 다운로드합니다.
+2. [Google Colab](https://colab.research.google.com/)에 업로드합니다.
+3. 노트북의 지침에 따라 단계별로 실행합니다.
+
+이 방법은 모든 설정 단계를 안내하고 HuggingFace 로그인 및 TensorFlow 오류 처리를 포함합니다.
+
+#### 방법 B: 간단한 모델 테스트 (그라디오 없이)
+
+Gradio 인터페이스 없이 LLM 모델만 테스트하고 싶다면, 간단한 데모 노트북을 사용하세요:
+
+1. GitHub에서 [simple_colab_demo.ipynb](https://github.com/Quietseong/saju-prompt-mvp/blob/main/notebooks/simple_colab_demo.ipynb) 파일을 다운로드합니다.
+2. [Google Colab](https://colab.research.google.com/)에 업로드합니다.
+3. 노트북의 지침에 따라 순서대로 실행합니다.
+
+이 방법은 모델의 동작을 확인하고 LLM 클라이언트 API를 직접 사용하는 방법을 보여줍니다.
+
+#### 방법 C: 수동 설정
+
 1. Google Colab에서 다음 코드를 실행하여 저장소를 클론합니다:
 
 ```python
@@ -52,7 +74,17 @@ pip install -e .
 !pip install -e .
 ```
 
-3. 애플리케이션을 시작합니다 (공유 URL 활성화):
+3. HuggingFace 로그인 및 API 키 설정:
+
+```python
+from huggingface_hub import notebook_login
+notebook_login()
+
+import os
+os.environ["HUGGINGFACE_API_KEY"] = "YOUR_API_KEY"  # HuggingFace 토큰으로 대체
+```
+
+4. 애플리케이션을 시작합니다 (공유 URL 활성화):
 
 ```python
 !python app.py --share
