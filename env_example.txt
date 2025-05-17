@@ -1,0 +1,19 @@
+# SajuMate 환경 설정
+
+# OpenAI API 키 (OpenAI 모델 사용 시 필요)
+# OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+
+# Llama 모델 설정 (로컬 모델 사용 시 필요)
+# LLAMA_MODEL_PATH=F:/dev/models/llama-3-8b-instruct
+LLAMA_HOST=http://localhost:8000
+
+# 서비스 설정
+DEFAULT_MODEL_TYPE=llama
+DEFAULT_MODEL=llama-3-8b-instruct
+DEFAULT_OPENAI_MODEL=gpt-4-turbo
+DEFAULT_DEVICE=auto
+
+# 웹 인터페이스 설정
+SAJUMATE_PORT=7860
+SAJUMATE_HOST=0.0.0.0
+SAJUMATE_SHARE=false 
