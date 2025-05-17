@@ -26,7 +26,8 @@ try:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, BitsAndBytesConfig
 except ImportError:
-    logger.warning("PyTorch 또는 transformers 패키지가 설치되지 않았습니다. Llama 로컬 양자화 기능을 사용할 수 없습니다.")
+    logger.warning("PyTorch 또는 transformers 패키지가 설치되지 않았습니다. LlamaProvider(로컬 모드)를 사용할 수 없습니다.")
+    torch = None  # Prevent NameError
 
 class ModelType(Enum):
     """LLM 모델 타입 Enum"""
@@ -582,11 +583,10 @@ def save_response(response: Dict[str, Any], output_dir: str = "results/responses
 if __name__ == "__main__":
     # Llama 모델 사용 (기본값)
     llm_client = LLMClient(
-        provider_type=ModelType.LLAMA,
-        model="llama-3-8b-instruct",
-        host="http://localhost:8000",  # Llama 서버 주소
-        system_prompt="당신은 사주 해석의 전문가입니다."
-    )
+         provider_type=ModelType.LLAMA,
+         model="llama-3-8b-instruct",
+         host="http://localhost:8000",  # Llama 서버 주소
+     )
     
     # 간단한 테스트
     sample_prompt = "1990년 3월 15일 오전 9시에 태어난 남성의 사주를 간략하게 해석해주세요."

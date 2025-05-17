@@ -5,8 +5,8 @@ setup(
     version="0.1.0",
     description="한국 전통 사주 운세 생성 도구",
     author="SajuMate Team",
-    author_email="your@email.com",
-    url="https://github.com/yourusername/sajumate",
+    author_email="actual@email.com",
+    url="https://github.com/actualusername/sajumate",
     packages=find_packages(),
     include_package_data=True,
     install_requires=[

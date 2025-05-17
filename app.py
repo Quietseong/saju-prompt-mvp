@@ -1,10 +1,15 @@
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import warnings
+warnings.filterwarnings("ignore")
 import json
 import gradio as gr
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Tuple, List, Optional
+import signal
+import sys
 
 from src.llm_client import LLMClient, ModelType
 from src.prompt_manager import PromptManager
@@ -220,7 +225,7 @@ def generate_chat_response(
         client = init_client(api_key)
         
         # Include conversation history in prompt
-        template_key = f"{DEFAULT_TEMPLATE}_en"  # Force English output
+        template_key = DEFAULT_TEMPLATE  # already English
         
         # Generate base prompt using template
         base_prompt = prompt_manager.generate_prompt(template_key, persona)
@@ -324,9 +329,9 @@ def create_interface():
             with gr.Column(scale=3):
                 # Chatbot UI
                 chatbot = gr.Chatbot(
+                    type="messages",
                     label="Saju Reading Conversation",
-                    height=500,
-                    bubble_full_width=False
+                    height=500
                 )
                 
                 # Message input
@@ -449,11 +454,10 @@ def create_interface():
     return demo
 
 # Main application entry point
-def main():
+def main(share=False):
     """Console script entry point"""
     demo = create_interface()
     # Run with default settings
-    share = os.getenv("SAJUMATE_SHARE", "false").lower() == "true"
     port = int(os.getenv("SAJUMATE_PORT", "7861"))  # Changed default port to avoid conflicts
     server_name = os.getenv("SAJUMATE_HOST", "0.0.0.0")
     
@@ -467,4 +471,11 @@ def main():
     )
 
 if __name__ == "__main__":
-    main() 
+    def signal_handler(sig, frame):
+        print("종료 중...")
+        sys.exit(0)
+        
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # 콜랩에서는 share=True로 실행
+    main(share=True) 
