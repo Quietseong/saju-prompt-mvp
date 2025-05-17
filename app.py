@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, List, Optional
 import signal
 import sys
+import argparse  # Add for command line arguments parsing
 
 from src.llm_client import LLMClient, ModelType
 from src.prompt_manager import PromptManager
@@ -97,17 +98,18 @@ def is_user_info_set(user_info: Dict[str, Any]) -> bool:
 # Generate chatbot response
 def generate_chat_response(
     message: str,
-    chat_history: List[Tuple[str, str]],
+    chat_history: List[Dict[str, str]],
     user_info: Dict[str, Any],
     api_key: str,
     tone: str = "default"
-) -> Tuple[List[Tuple[str, str]], Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, str]], Dict[str, Any], Dict[str, Any]]:
     """
     Generate chatbot response to user message
     
     Args:
         message: User message
-        chat_history: Previous conversation history
+        chat_history: Previous conversation history as a list of message dictionaries
+                     with 'role' ('user' or 'assistant') and 'content' keys
         user_info: User information dictionary
         api_key: HuggingFace API key
         tone: Chatbot tone/style
@@ -120,20 +122,20 @@ def generate_chat_response(
         # Request needed information if incomplete
         if "step" not in user_info:
             user_info["step"] = "name"
-            return chat_history + [(message, "Hello! I need some information for your Saju reading. First, what's your name?")], user_info, {}
+            return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Hello! I need some information for your Saju reading. First, what's your name?"}], user_info, {}
             
         if user_info["step"] == "name":
             user_info["name"] = message
             user_info["step"] = "birth_year"
-            return chat_history + [(message, "Thank you. What year were you born? (e.g., 1990)")], user_info, {}
+            return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Thank you. What year were you born? (e.g., 1990)"}], user_info, {}
             
         if user_info["step"] == "birth_year":
             try:
                 user_info["birth_year"] = int(message)
                 user_info["step"] = "birth_month"
-                return chat_history + [(message, "What month were you born? (1-12)")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "What month were you born? (1-12)"}], user_info, {}
             except ValueError:
-                return chat_history + [(message, "Please enter a number. What year were you born?")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a number. What year were you born?"}], user_info, {}
                 
         if user_info["step"] == "birth_month":
             try:
@@ -141,11 +143,11 @@ def generate_chat_response(
                 if 1 <= month <= 12:
                     user_info["birth_month"] = month
                     user_info["step"] = "birth_day"
-                    return chat_history + [(message, "What day of the month were you born? (1-31)")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "What day of the month were you born? (1-31)"}], user_info, {}
                 else:
-                    return chat_history + [(message, "Please enter a value between 1 and 12.")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a value between 1 and 12."}], user_info, {}
             except ValueError:
-                return chat_history + [(message, "Please enter a number. What month were you born?")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a number. What month were you born?"}], user_info, {}
                 
         if user_info["step"] == "birth_day":
             try:
@@ -153,11 +155,11 @@ def generate_chat_response(
                 if 1 <= day <= 31:  # Simple validation only (skipping month-specific day validation)
                     user_info["birth_day"] = day
                     user_info["step"] = "birth_hour"
-                    return chat_history + [(message, "What hour were you born? (0-23 hour format, enter 12 if unknown)")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "What hour were you born? (0-23 hour format, enter 12 if unknown)"}], user_info, {}
                 else:
-                    return chat_history + [(message, "Please enter a value between 1 and 31.")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a value between 1 and 31."}], user_info, {}
             except ValueError:
-                return chat_history + [(message, "Please enter a number. What day were you born?")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a number. What day were you born?"}], user_info, {}
                 
         if user_info["step"] == "birth_hour":
             try:
@@ -165,11 +167,11 @@ def generate_chat_response(
                 if 0 <= hour <= 23:
                     user_info["birth_hour"] = hour
                     user_info["step"] = "birth_minute"
-                    return chat_history + [(message, "What minute were you born? (0-59, enter 0 if unknown)")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "What minute were you born? (0-59, enter 0 if unknown)"}], user_info, {}
                 else:
-                    return chat_history + [(message, "Please enter a value between 0 and 23.")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a value between 0 and 23."}], user_info, {}
             except ValueError:
-                return chat_history + [(message, "Please enter a number. What hour were you born?")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a number. What hour were you born?"}], user_info, {}
                 
         if user_info["step"] == "birth_minute":
             try:
@@ -177,31 +179,31 @@ def generate_chat_response(
                 if 0 <= minute <= 59:
                     user_info["birth_minute"] = minute
                     user_info["step"] = "gender"
-                    return chat_history + [(message, "What is your gender? ('male' or 'female')")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "What is your gender? ('male' or 'female')"}], user_info, {}
                 else:
-                    return chat_history + [(message, "Please enter a value between 0 and 59.")], user_info, {}
+                    return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a value between 0 and 59."}], user_info, {}
             except ValueError:
-                return chat_history + [(message, "Please enter a number. What minute were you born?")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter a number. What minute were you born?"}], user_info, {}
                 
         if user_info["step"] == "gender":
             if message.lower() in ["male", "m", "man"]:
                 user_info["gender"] = "male"
                 user_info["step"] = "complete"
                 resp = "Thank you for providing all the information. Please wait a moment while I prepare your Saju reading..."
-                return chat_history + [(message, resp)], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": resp}], user_info, {}
             elif message.lower() in ["female", "f", "woman"]:
                 user_info["gender"] = "female"
                 user_info["step"] = "complete"
                 resp = "Thank you for providing all the information. Please wait a moment while I prepare your Saju reading..."
-                return chat_history + [(message, resp)], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": resp}], user_info, {}
             else:
-                return chat_history + [(message, "Please enter 'male' or 'female'.")], user_info, {}
+                return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Please enter 'male' or 'female'."}], user_info, {}
     
     # Begin Saju reading once user info is complete
     try:
         # Verify API key is provided
         if not api_key:
-            return chat_history + [(message, "Error: HuggingFace API key is required. Please enter your API key in the settings panel.")], user_info, {}
+            return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": "Error: HuggingFace API key is required. Please enter your API key in the settings panel."}], user_info, {}
         
         # Create BirthInfo object and validate
         birth_info = BirthInfo(
@@ -270,8 +272,8 @@ def generate_chat_response(
         
         # Add previous conversation history
         conversation_history = "\n\nConversation History:\n"
-        for i, (user_msg, bot_msg) in enumerate(chat_history[-5:]):  # Include only the last 5 exchanges
-            conversation_history += f"User: {user_msg}\nChatbot: {bot_msg}\n"
+        for i, msg in enumerate(chat_history[-5:]):  # Include only the last 5 exchanges
+            conversation_history += f"User: {msg['content'] if msg['role'] == 'user' else ''}\nChatbot: {msg['content'] if msg['role'] == 'assistant' else ''}\n"
         
         # Add current user message
         conversation_history += f"User: {message}\nChatbot: "
@@ -297,14 +299,14 @@ def generate_chat_response(
         }
         
         # Update conversation history
-        updated_history = chat_history + [(message, result_text)]
+        updated_history = chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": result_text}]
         
         return updated_history, user_info, model_info
         
     except Exception as e:
         # Handle errors
         error_message = f"An error occurred: {str(e)}"
-        return chat_history + [(message, error_message)], user_info, {}
+        return chat_history + [{"role": "user", "content": message}, {"role": "assistant", "content": error_message}], user_info, {}
 
 # Create Gradio chatbot interface
 def create_interface():
@@ -327,9 +329,9 @@ def create_interface():
         
         with gr.Row():
             with gr.Column(scale=3):
-                # Chatbot UI
+                # Chatbot UI - Fix type parameter
                 chatbot = gr.Chatbot(
-                    type="messages",
+                    type="messages",  # Ensure using messages type instead of tuples
                     label="Saju Reading Conversation",
                     height=500
                 )
@@ -406,7 +408,7 @@ def create_interface():
             progress(0, desc="Processing message...")
             
             # Update UI to show user message immediately
-            interim_history = chat_history + [(message, None)]
+            interim_history = chat_history + [{"role": "user", "content": message}]
             
             progress(0.3, desc="Generating response...")
             updated_history, updated_user_info, new_model_info = generate_chat_response(
@@ -456,26 +458,55 @@ def create_interface():
 # Main application entry point
 def main(share=False):
     """Console script entry point"""
-    demo = create_interface()
-    # Run with default settings
-    port = int(os.getenv("SAJUMATE_PORT", "7861"))  # Changed default port to avoid conflicts
-    server_name = os.getenv("SAJUMATE_HOST", "0.0.0.0")
-    
-    print(f"Starting SajuMate Chatbot UI: http://{server_name if server_name != '0.0.0.0' else 'localhost'}:{port}")
-    print(f"Using model: HuggingFace API - {DEFAULT_HF_MODEL}")
-    print(f"To run with Colab, add --share to enable public URL sharing")
-    demo.launch(
-        server_name=server_name,
-        server_port=port,
-        share=share
-    )
+    # Enable better error handling for API key validation
+    try:
+        demo = create_interface()
+        # Run with default settings
+        port = int(os.getenv("SAJUMATE_PORT", "7861"))  # Changed default port to avoid conflicts
+        server_name = os.getenv("SAJUMATE_HOST", "0.0.0.0")
+        
+        print(f"Starting SajuMate Chatbot UI: http://{server_name if server_name != '0.0.0.0' else 'localhost'}:{port}")
+        print(f"Using model: HuggingFace API - {DEFAULT_HF_MODEL}")
+        if share:
+            print("Public URL sharing is enabled - perfect for Colab!")
+        else:
+            print("To run with Colab, add --share to enable public URL sharing")
+        
+        # Add graceful error handling for launch
+        try:
+            demo.launch(
+                server_name=server_name,
+                server_port=port,
+                share=share
+            )
+        except Exception as e:
+            print(f"Error launching Gradio interface: {str(e)}")
+            print("If running in Colab, make sure to use share=True")
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"Error initializing application: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
+    # Set up a proper signal handler for graceful exit
     def signal_handler(sig, frame):
-        print("종료 중...")
+        print("Shutting down gracefully...")
         sys.exit(0)
         
     signal.signal(signal.SIGINT, signal_handler)
     
-    # 콜랩에서는 share=True로 실행
-    main(share=True) 
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='SajuMate - Eastern Fortune Reading Chatbot')
+    parser.add_argument('--share', action='store_true', help='Enable public URL sharing (required for Colab)')
+    args = parser.parse_args()
+    
+    # Run with share=True if specified or in Colab environment
+    is_colab = 'google.colab' in sys.modules
+    if is_colab:
+        print("Colab environment detected, enabling public URL sharing")
+        share = True
+    else:
+        share = args.share
+        
+    main(share=share) 

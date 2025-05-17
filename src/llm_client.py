@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 try:
     from dotenv import load_dotenv
     load_dotenv()
+    logger.info("환경변수를 .env 파일에서 로드했습니다.")
 except ImportError:
     logger.warning("dotenv 패키지가 설치되지 않았습니다. 환경변수를 직접 설정하세요.")
+    logger.info("코랩에서 실행하는 경우 'pip install python-dotenv'를 실행하거나, 환경변수를 직접 설정하세요.")
 
 # PyTorch 및 변환기 임포트 (Llama 로컬 양자화에 필요)
 try:

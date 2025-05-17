@@ -37,6 +37,39 @@ cd sajumate
 pip install -e .
 ```
 
+### 방법 3: Google Colab에서 실행
+
+1. Google Colab에서 다음 코드를 실행하여 저장소를 클론합니다:
+
+```python
+!git clone https://github.com/quietseong/sajumate.git
+%cd sajumate
+```
+
+2. 필요한 패키지를 설치합니다:
+
+```python
+!pip install -e .
+```
+
+3. 애플리케이션을 시작합니다 (공유 URL 활성화):
+
+```python
+!python app.py --share
+```
+
+또는 제공된 설정 스크립트를 사용할 수 있습니다:
+
+```python
+!python colab_setup.py
+```
+
+API 키를 함께 제공하려면:
+
+```python
+!python colab_setup.py --api-key="YOUR_HUGGINGFACE_API_KEY"
+```
+
 ## 📊 사용 방법
 
 ### 1. 명령줄에서 실행
